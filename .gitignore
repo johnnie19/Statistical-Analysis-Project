@@ -43,5 +43,6 @@ Thumbs.db
 *.swp
 *~
 
-# Large data files (already tracked by Git LFS)
-# *.csv is already tracked by Git LFS, so we don't need to ignore it
+# Large data files
+# Exclude the large MNIST training file
+data/train_mnist.csv
