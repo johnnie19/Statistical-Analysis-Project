@@ -9,6 +9,29 @@ This project applies **machine learning, dimensionality reduction, clustering, a
 
 ---
 
+## 📥 Large File Handling
+The MNIST training dataset (`train_mnist.csv`) is over 100MB and exceeds GitHub's file size limit. This file is excluded from the repository. To work with this project:
+
+1. **Download the file separately**: The file can be downloaded from [Kaggle MNIST Dataset](https://www.kaggle.com/datasets/oddrationale/mnist-in-csv) or other MNIST sources.
+2. **Place the file in the correct location**: After downloading, place `train_mnist.csv` in the `data/` directory.
+
+Alternatively, you can generate the MNIST dataset using Python:
+```python
+from sklearn.datasets import fetch_openml
+import pandas as pd
+
+# Download MNIST dataset
+mnist = fetch_openml('mnist_784', version=1, parser='auto')
+X = mnist.data
+y = mnist.target
+
+# Create training dataset (first 10,000 samples)
+train_data = pd.concat([y.iloc[:10000], X.iloc[:10000]], axis=1)
+train_data.to_csv('data/train_mnist.csv', index=False)
+```
+
+---
+
 ---
 
 ## 📜 Dataset
@@ -80,4 +103,3 @@ This project applies **machine learning, dimensionality reduction, clustering, a
 📌 Best model selected based on **Bias-Variance tradeoff** & **Test MSE**.
 
 ---
-
