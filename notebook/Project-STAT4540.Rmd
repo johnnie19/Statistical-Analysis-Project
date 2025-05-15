@@ -1,0 +1,649 @@
+---
+title: "Project STAT4540"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+date: "2023-11-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(class)
+library(caret)
+library(FNN)
+library(MASS)
+library(e1071)
+library(stats)  # for hclust
+library(cluster)  # for kmeans
+library(glmnet)
+library(pls)
+library(leaps)
+```
+
+```{r}
+# Load data
+train_df <- read.csv("C:/Users/johnC/Downloads/train_mnist.csv")
+test_df <- read.csv("C:/Users/johnC/Downloads/test_mnist.csv")
+```
+(Q1)
+
+[1]
+```{r 11}
+
+# Define the predictor and response variables
+x_train <- as.matrix(train_df[, 1:784])
+y_train <- as.factor(train_df[, "y"])
+x_test <- as.matrix(test_df[, 1:784])
+y_test <- as.factor(test_df[, "y"])
+
+# Create a data frame to store results
+result_df <- data.frame(Flexibility = numeric(), ErrorRate = numeric())
+
+# Define a range of K values
+k_values <- c(1, 2, 3, 10, 100, 500, 750, 1000)
+
+# Iterate over different K values
+for (k in k_values) {
+    # Train K-NN model
+    knn_model <- knn(train = x_train, test = x_test, cl = y_train, k = k)
+    
+    # Make predictions on test data
+    predictions <- as.factor(knn_model)
+    
+    # Calculate the confusion matrix
+    confusion_matrix <- confusionMatrix(predictions, y_test)
+    
+    # Extract error rate and store in result_df
+    error_rate <- 1 - confusion_matrix$overall["Accuracy"]
+    result_df <- rbind(result_df, data.frame(Flexibility = 1/k, ErrorRate = error_rate))
+}
+
+# Plot the test error rate curve
+plot(result_df$Flexibility, result_df$ErrorRate, type = "b", 
+     xlab = "Flexibility (1/K)", ylab = "Test Error Rate",
+     main = "K-NN: Test Error Rate Curve")
+
+# Identify the optimal Flexibility with the minimum error rate
+optimal_flexibility <- result_df$Flexibility[which.min(result_df$ErrorRate)]
+cat("Optimal Flexibility:", optimal_flexibility, "\n")
+cat("Best Error Rate:", min(result_df$ErrorRate), "\n")
+```
+[2]
+```{r 12}
+# True Positive Rate Calculation
+knn_tpr <- sapply(k_values, function(k) {
+  knn_pred <- knn(train = train_df[, 1:784], test = test_df[, 1:784], cl = train_df$y, k = k)
+  sapply(0:9, function(dig) mean(knn_pred[test_df$y == dig] == dig))
+})
+
+# Plotting Class-Specific TPR Against Flexibility
+matplot(t(matrix(knn_tpr, nrow = 10)), type = "b", pch = 1, col = 1:10,
+        xlab = "Flexibility (1/K)", ylab = "True Positive Rate",
+        main = "Class-Specific TPR vs Flexibility")
+
+legend("topright", legend = as.character(0:9), col = 1:10, pch = 1, title = "Digit", cex = 0.8)
+
+```
+[3]
+```{r 13}
+# 3. LDA 
+
+lda_fit <- lda(y ~ ., data = train_df)
+lda_pred <- predict(lda_fit, test_df[,1:784])$class
+lda_err <- mean(lda_pred != test_df$y)
+lda_tpr <- t(sapply(0:9, function(dig) mean(lda_pred[test_df$y==dig] == dig)))
+
+lda_err
+lda_tpr
+
+# Discriminant function is linear combination of predictors 
+# Parameters are within class means (10), common covariance matrix (784x784)
+```
+[4]
+```{r 14}
+# 4. QDA
+qda_fit <- qda(y ~ ., data = train_df)
+qda_pred <- predict(qda_fit, test_df[,1:784])$class
+qda_err <- mean(qda_pred != test_df$y)
+qda_tpr <- t(sapply(0:9, function(dig) mean(qda_pred[test_df$y==dig] == dig)))
+
+qda_err
+qda_tpr
+
+
+# Parameters are class-specific means (10x784) and covariances (10x784x784) 
+```
+[5]
+
+The \texttt{e1071} package estimates the class-specific posterior probabilities using a Bayesian approach with asymptotic likelihood estimates. To put it more precisely:
+
+By utilizing maximum likelihood estimation (MLE) to ascertain the ratio of training examples in each class, the method computes the class prior probabilities.
+
+Based on each class's unique conditions, the algorithm determines its density. $p(x|y=c_k)$ is the conditional probability of $x$ given $y$ equals $c_k$. It uses kernel density estimation to obtain a non-parametric estimate of the density.
+
+It then computes the posterior probabilities using Bayes' rule. $p(y=c_k|x)$ is the conditional probability that $y$ equals $c_k$ given $x$.
+
+```{r 15}
+# 5. Naive Bayes
+
+nb_fit <- naiveBayes(y ~ ., data = train_df)
+nb_pred <- predict(nb_fit, test_df[,1:784])
+nb_err <- mean(nb_pred != test_df$y)
+nb_tpr <- t(sapply(0:9, function(dig) mean(nb_pred[test_df$y==dig] == dig)))
+
+nb_err
+nb_tpr
+
+# Estimates class probabilities by relative frequencies
+```
+[6]
+```{r 16}
+# 6. Comparison
+methods <- c("KNN", "LDA", "QDA", "Naive Bayes")
+err_rates <- c(min(result_df$ErrorRate), lda_err, qda_err, nb_err)
+
+barplot(err_rates, names.arg=methods, ylab="Error Rate")
+
+# LDA has lowest error rate, followed by QDA
+```
+
+Q2.
+
+1. 
+
+\begin{itemize}
+
+\item Extract images of the digits 1 and 8 from both the training and test sets
+
+\item Convert the provided information to matrix format
+
+\item Perform data centering by subtracting the mean of every feature
+
+\item Scale the data by dividing by the standard deviation of each feature
+
+\textbf Principal Component Analysis (PCA) Optimization:
+
+\item Determine which principal components (PCs) capture the most variance in the dataset
+
+\item The first two principal components, $\psi_1$ and $\psi_2$, represent the directions of highest variability in the feature space
+
+\item The principal component (PC) scores represent the position values of the data points on the new basis
+
+\textbf Dimensions:
+
+\item The sample size of the training data is the number of images used to represent digits 1 and 8
+
+\item The dimensions of the principal component (PC) scores are determined by the number of samples and number of PCs
+
+\item The dimensions of the PC directions are determined by the number of PCs and number of features
+
+\end{itemize}
+
+
+```{r}
+idx8 <- which(train_df$y == 8)
+idx1 <- which(train_df$y == 1)
+xtrain8 <- as.matrix(train_df[idx8, 1:784])
+xtrain1 <- as.matrix(train_df[idx1, 1:784])
+id8 <- which(test_df$y == 8)
+id1 <- which(test_df$y == 1)
+xtest8 <- as.matrix(test_df[id8, 1:784])
+xtest1 <- as.matrix(test_df[id1, 1:784])
+```
+
+2. 
+```{r 22}
+pcout8 <- prcomp(xtrain8)
+pcout1 <- prcomp(xtrain1)
+```
+
+The elements of pcout8 and pcout1 are as follows, in accordance with their respective definitions:  
+
+Standard deviation (sdev) for every principal component
+
+rotation: The principal component loading vectors
+
+Scale and center: The data centering and scaling methods used
+
+x: Rotated values of the data following PCA transformation
+
+
+3.
+
+The prcomp() function gives two outputs, pcout8$center and pcout8$scale. These are used to preprocess the training data, centering and scaling it before Principal Component Analysis (PCA). 
+
+In order to center the training data, the average values of each column were subtracted, and this is represented by the variable "pcout8$center". 
+
+The variable pcout8$scale indicates whether any scaling was implemented in addition to centering.  The training data was scaled by dividing it by the standard deviations of each column, if the condition is True. 
+
+```{r 23}
+# Apply the same centering and scaling to test data as in training data
+xtest8_centered_scaled <- scale(xtest8, center = pcout8$center, scale = pcout8$scale)
+xtest1_centered_scaled <- scale(xtest1, center = pcout8$center, scale = pcout8$scale)
+```
+
+4. 
+\begin{align*}
+\boldsymbol{\varphi}_1 &\text{: First principal component direction (loading vector)} \\
+\boldsymbol{\varphi}_2 &\text{: Second principal component direction (loading vector)}
+\end{align*}
+
+The variables $\boldsymbol{\varphi}_1$ and $\boldsymbol{\varphi}_2$ represent the first two columns of the rotation matrix $\mathbf{pcout8$rotation}$. 
+These vectors denote the directions within the original pixel space that most effectively capture the variance in the given data. The principal axes, determined as the directions along which the data exhibits the highest variability, are indicated by $\boldsymbol{\varphi}_1$ and $\boldsymbol{\varphi}_2$.
+
+Geometrically, $\boldsymbol{\varphi}_1$ and $\boldsymbol{\varphi}_2$ define two orthogonal axes that form a new coordinate system for the pixel space. Projecting the original data onto $\boldsymbol{\varphi}_1$ and $\boldsymbol{\varphi}_2$ results in new features that preserve the directions of maximum variance while filtering out noise. Thus, these loading vectors point along the directions of greatest variability in the image data.
+
+5.
+\begin{align*}
+\boldsymbol{x}_1^{\top} &\text{: First observation in original pixel space (first row of }\mathbf{xtrain8}) \\
+\boldsymbol{z}_1^{\top} &\text{: First observation in principal components space (first row of }\mathbf{pcout8$x})
+\end{align*}
+
+The variable $\boldsymbol{z}$ represents the projection of the original variable $\boldsymbol{x}$ onto the principal components coordinate system. Specifically, $\boldsymbol{z}_{1}^{\top}$ provides the coordinates of the first observation with respect to the directions of maximum variance (principal components). By transforming from $\boldsymbol{x}$ to $\boldsymbol{z}$, the data is expressed in a more concise form that captures the important variability characteristics.
+
+Geometrically, $\boldsymbol{z}_{1}^{\top}$ gives the coordinates of the first observation on the new orthogonal axes defined by the principal directions. This allows the high-dimensional pixel data to be effectively summarized in the lower-dimensional space spanned by the principal components. The key information concerning the variation patterns in $\boldsymbol{x}$ is preserved in $\boldsymbol{z}$.
+
+
+
+6. 
+
+pcout8$sdev contains the standard deviations of the principal components.
+
+
+7.
+
+```{r 27}
+cum_var_explained_8 <- cumsum(pcout8$sdev^2) / sum(pcout8$sdev^2)
+cum_var_explained_1 <- cumsum(pcout1$sdev^2) / sum(pcout1$sdev^2)
+
+# Plotting
+plot(cum_var_explained_8, type = "l", col = "blue", xlab = "Number of Principal Components",
+     ylab = "Cumulative Proportion of Variance Explained", main = "Cumulative Variance Explained by PCs")
+lines(cum_var_explained_1, type = "l", col = "red")
+legend("bottomright", legend = c("pcout8", "pcout1"), col = c("blue", "red"), lty = 1)
+```
+Using pcout1 allows for a greater explanation of variance with a smaller number of principal components, while pcout8 utilizes a larger number of principal components that explain less variance.
+
+
+8.
+
+```{r 28p}
+# Assuming xtest8 and xtest1 are your centered-and-scaled test data
+# Assuming pcout8 and pcout1 are your PCA results for xtrain8 and xtrain1
+
+
+# Number of loadings to use (M = 1 to 500)
+M_values <- 1:500
+err8 = numeric(500)
+err1 = numeric(500)
+# Reconstruct images for each M value
+for (M in M_values) {
+  # Reconstruct for xtest8
+  load8 = pcout8$rotation[, 1:M]
+  z8 = xtest8_centered_scaled %*% load8 
+  reconstructed_xtest8 <- z8 %*% t(load8)
+  err8[M] = sum((xtest8_centered_scaled - reconstructed_xtest8)^2) / nrow(xtest8_centered_scaled) 
+  
+    # Reconstruct for xtest1
+  load1 = pcout1$rotation[, 1:M]
+  z1 = xtest1_centered_scaled %*% load1 
+  reconstructed_xtest1 <- z1 %*% t(load1)
+  err1[M] = sum((xtest1_centered_scaled - reconstructed_xtest1)^2) / nrow(xtest1_centered_scaled) 
+
+  # Now, you have reconstructed_xtest8 and reconstructed_xtest1 for each M value
+  # You can use or analyze these reconstructed images as needed
+}
+
+# Heatmap color palette 
+cols <- rev(heat.colors(256))
+
+par(mfrow=c(1, 2))
+
+# Digit 1 plots
+image(matrix(xtest1_centered_scaled[1,], ncol = 28), col = cols, 
+      main = "Original xtest1")
+
+image(matrix(reconstructed_xtest1[1,], ncol = 28), col = cols,  
+      main = "Reconstructed xtest1")
+      
+# Digit 8 plots 
+image(matrix(xtest8_centered_scaled[1,], ncol = 28), col = cols,
+      main = "Original xtest8")
+
+image(matrix(reconstructed_xtest8[1,], ncol = 28), col = cols,
+      main = "Reconstructed xtest8")
+```
+
+
+9. 
+
+```{r 29}
+
+# Plot reconstruction errors
+plot(M_values, err8, type = "l", col = "blue", xlab = "Number of Principal Components (M)", ylab = "Reconstruction Error", main = "Reconstruction Error vs. M for xtest8")
+lines(M_values, err1, type = "l", col = "red")
+legend("topright", legend = c("xtest8", "xtest1"), col = c("blue", "red"), lty = 1)
+
+```
+
+
+
+Q3.
+
+[i]
+```{r 31}
+# Assuming xtrain8 and xtrain1 are matrices containing raw training images for digits 8 and 1
+
+# (i) Perform hierarchical clustering
+X <- rbind(xtrain8, xtrain1)
+hc.comp <- hclust(dist(X), method = "complete")
+hc.avg <- hclust(dist(X), method = "average")
+hc.sgl <- hclust(dist(X), method = "single")
+
+# Plot dendrograms
+par(mfrow = c(1, 3))
+plot(hc.comp, main = "Complete Linkage")
+plot(hc.avg, main = "Average Linkage")
+plot(hc.sgl, main = "Single Linkage")
+```
+The greatest distance between any two points in the distinct clusters is considered in complete linkage. This increases its resistance to outliers, or data points that deviate significantly from the primary cluster. It has a tendency to form compact and balanced clusters by considering the most dissimilar pair of points when deciding how to combine clusters. 
+
+[ii]
+```{r}
+# (ii) Cut tree for 2 clusters using complete linkage
+cutree_comp <- cutree(hc.comp, k = 2)
+
+# Check if the clusters correspond to digits 8 and 1
+table(cutree_comp, rep(c(8, 1), each = length(cutree_comp) / 2))
+```
+Yes. They do correspond to the digits 1 and 8. 
+
+[iii]
+```{r}
+# (iii) Repeat using PC scores
+pcout8 <- prcomp(xtrain8)
+pcout1 <- prcomp(xtrain1)
+
+# Skip the check and conversion, as princomp returns a matrix
+Z <- rbind(pcout8$x, pcout1$x)[, 1:3]
+
+# Check the structure of Z and convert it to a matrix if needed
+str(Z)
+
+# If Z is a data frame, convert it to a matrix
+if (is.data.frame(Z)) {
+  Z <- as.matrix(Z)
+}
+
+# Scale Z with centering and scaling
+Z_scaled <- scale(Z, center = TRUE, scale = TRUE)
+
+
+# Perform hierarchical clustering on scaled Z
+hc.comp_Z_scaled <- hclust(dist(Z_scaled), method = "complete")
+cutree_comp_Z_scaled <- cutree(hc.comp_Z_scaled, k = 2)
+
+# Check if the clusters correspond to digits 8 and 1
+table(cutree_comp_Z_scaled, rep(c(8, 1), each = length(cutree_comp_Z_scaled) / 2))
+
+# Compare results and provide justification
+```
+
+
+
+(2) 2-Means clustering
+ (i) Describe the 2-Means optimization problem
+ Dissimilarity measure: Euclidean distance
+ Objective: Minimize the sum of squared distances between data points and their assigned cluster centers
+ Variables: Cluster centers
+ 
+[ii]
+```{r 32}
+# (ii) Perform 2-Means on X, Z, and scaled Z with 3 random initializations
+set.seed(42)  # for reproducibility
+kmeans_X <- kmeans(X, centers = 2, nstart = 3)
+kmeans_Z <- kmeans(Z, centers = 2, nstart = 3)
+kmeans_Z_scaled <- kmeans(Z_scaled, centers = 2, nstart = 3)
+```
+
+[iii]
+```{r 33}
+# (iii) Compare 2-Means approaches
+# Check which approach is better at identifying the cluster with the correct digit label
+# Create true labels for comparison
+true_labels <- rep(c(8, 1), c(length(xtrain8), length(xtrain1)))
+
+# Compare results and provide justification
+table(kmeans_X$cluster)
+table(kmeans_Z$cluster)
+table(kmeans_Z_scaled$cluster)
+```
+The initial placement of cluster centroids has a significant impact on the k-means algorithm. Changes to the original cluster centers can yield different solutions.
+Performing several random initializations—three in this instance—increases the likelihood of finding a global minimum for the sum of squared distances.
+
+
+
+
+
+Q4. 
+
+```{r}
+# Assuming you have already loaded your data
+train_data <- read.csv("C:/Users/johnC/Downloads/reg_train.csv")
+test_data <- read.csv("C:/Users/johnC/Downloads/reg_test.csv")
+```
+[1]. 
+
+Best subset selection is computationally expensive for high-dimensional data
+
+2. Least Squares
+```{r 42}
+lm_model <- lm(y ~ ., data = train_data)
+test_predictions <- predict(lm_model, newdata = test_data)
+test_mse_ls <- mean((test_predictions - test_data$y)^2)
+```
+
+ 3. Forward Selection
+```{r 43}
+# Set the range of nvmax values
+nvmax_values <- 1:199
+
+# Perform forward selection and compute test MSE for each nvmax
+mse_values <- sapply(nvmax_values, function(nvmax) {
+  forward_model <- regsubsets(y ~ ., data = train_data, method = "forward", nvmax = nvmax)
+  
+  summary_model <- summary(forward_model)
+  best_formula <- names(which.max(summary_model$adjr2))
+  
+ selected_vars <- c("y", best_formula)
+
+selected_data <- train_data[, selected_vars, drop = FALSE]
+  
+  best_lm <- lm(y ~ ., data = selected_data)
+  
+  test_predictions_f <- predict(best_lm, newdata = test_data)
+  test_mse_f <- mean((test_predictions_f - test_data$y)^2)
+  
+  return(test_mse_f)
+})
+
+# Find the index of the minimum test MSE
+best_nvmax_index <- which.min(mse_values)
+
+# Get the corresponding best nvmax value
+best_nvmax <- nvmax_values[best_nvmax_index]
+
+# Print the results
+cat("Best nvmax value:", best_nvmax, "\n")
+cat("Corresponding test MSE:", mse_values[best_nvmax_index], "\n")
+
+```
+
+ 4. Backward Selection
+```{r 44}
+# Backward selection 
+
+mse_values <- numeric(length = length(nvmax_values))
+
+for (i in seq_along(nvmax_values)) {
+  nvmax <- nvmax_values[i]
+  
+  backward_model <- regsubsets(y ~ ., data = train_data, nvmax = nvmax, method = "backward")
+  
+  summary_model <- summary(backward_model)
+  best_formula <- names(which.max(summary_model$adjr2))
+  
+  selected_vars <- c("y", best_formula)
+  selected_data <- train_data[, selected_vars, drop = FALSE]
+  
+  best_lm <- lm(y ~ ., data = selected_data)
+  
+  test_predictions_b <- predict(best_lm, newdata = test_data)
+  test_mse_b <- mean((test_predictions_b - test_data$y)^2)
+  
+  mse_values[i] <- test_mse_b
+}
+
+# Find best nvmax
+best_nvmax_index <- which.min(mse_values)
+best_nvmax <- nvmax_values[best_nvmax_index]
+
+# Print the results
+cat("Best nvmax:", best_nvmax, "\n")
+cat("Minimum Test MSE:", mse_values[best_nvmax_index], "\n")
+
+```
+
+5. Compare Forward and Backward Selection
+
+For backward selection to work, there must be more samples (n) than variables (p), so that the whole model can be fit. Forward selection, on the other hand, can be used even when n is less than p, and it is the only subset method that works when p is very big. We have n = 200 and p = 500 in this case. Because of this, backward selection is not the best method because all the predictors have to be used in the first round, which is a nxp situation. So, in this case, forward subset selection is the better choice.
+
+
+6. Ridge and Lasso Regression
+
+Ridge Regression
+
+Minimize \[ \sum_{i=1}^{n} (y_i - \beta_0 - \sum_{j=1}^{p} x_{ij} \beta_j)^2 + \lambda \sum_{j=1}^{p} \beta_j^2 \]
+
+Lasso Regression
+
+Minimize \[ \sum_{i=1}^{n} (y_i - \beta_0 - \sum_{j=1}^{p} x_{ij} \beta_j)^2 + \lambda \sum_{j=1}^{p} |\beta_j| \]
+
+
+The impact of the parameter \lambda on variance and bias is investigated within the framework of Ridge Regression.
+
+The regularization term gains importance as the value of \lambda rises.
+
+Greater contraction of coefficients towards zero is the outcome of increasing the value of \lambda.
+
+Although the variance is decreasing, the bias is increasing.
+
+Advantageous when multiple predictors exhibit multicollinearity.
+
+
+Lasso Regression:
+
+The regularization term gains importance as the value of \lambda rises.
+
+A sparser model is produced by raising the value of \lambda because it makes some coefficients exactly zero.
+
+As the degree of variance decreases, bias becomes more prevalent.
+
+Advantageous for feature selection since it typically selects a subset of important predictors.
+
+
+# Ridge
+```{r 46}
+ridge_model <- cv.glmnet(as.matrix(train_data[, -ncol(train_data)]), train_data$y, alpha = 0)
+best_lambda_ridge <- ridge_model$lambda.min
+# Lasso
+lasso_model <- cv.glmnet(as.matrix(train_data[, -ncol(train_data)]), train_data$y, alpha = 1)
+best_lambda_lasso <- lasso_model$lambda.min
+best_lambda_lasso
+```
+
+7. Ridge Regression Test MSE
+```{r 47}
+ridge_test_predictions <- predict(ridge_model, newx = as.matrix(test_data[, -ncol(test_data)]), s = best_lambda_ridge)
+test_mse_ridge <- mean((ridge_test_predictions - test_data$y)^2)
+non_zero_coef_ridge <- sum(coef(ridge_model, s = best_lambda_ridge) != 0)
+non_zero_coef_ridge
+test_mse_ridge
+
+```
+
+ 8. Lasso Regression Test MSE
+```{r 48}
+lasso_test_predictions <- predict(lasso_model, newx = as.matrix(test_data[, -ncol(test_data)]), s = best_lambda_lasso)
+test_mse_lasso <- mean((lasso_test_predictions - test_data$y)^2)
+non_zero_coef_lasso <- sum(coef(lasso_model, s = best_lambda_lasso) != 0)
+non_zero_coef_lasso
+test_mse_lasso
+```
+
+ 9. PCR
+```{r 49}
+# Fit PCR model on the training set
+pcr_model <- pcr(y ~ ., scale = TRUE, data = train_data, validation = "CV")
+
+# Get the cross-validated RMSE values for different numbers of components
+cv_mse_pcr <- MSEP(pcr_model, newdata = test_data)$val
+
+# Find the optimal number of components (M) based on minimum RMSE
+optimal_M_pcr <- which.min(cv_mse_pcr)
+
+# Print results for PLS
+print(cv_mse_pcr)
+print(optimal_M_pcr)
+
+
+```
+
+ 10. PLS
+```{r 410}
+pls_cv <- plsr(y ~ ., scale = TRUE, data = train_data, validation = "CV")
+
+# Get the cross-validated RMSE values for different numbers of components
+cv_mse_pls <- MSEP(pls_cv, newdata = test_data)$val
+
+# Find the optimal number of components (M) based on minimum RMSE
+optimal_M_pls <- which.min(cv_mse_pls)
+
+# Print results for PLS
+print(cv_mse_pls)
+print(optimal_M_pls)
+```
+ 11. Compare models
+
+Bias-Variance Tradeoff Using Various Techniques:
+
+Principle Component Regression, or PCR:
+
+Lower overall test mean square error (MSE) could result from PCR's capacity to reduce variance by removing multicollinearity and capturing essential variance.
+
+Partial Least Squares, or PLS:
+
+By utilizing data from both predictors and responses, it balances variance reduction and bias, but because it depends so heavily on the response variable, bias may be added.
+
+Ridge Regression:
+
+By introducing a penalty to the OLS objective, ridge regression lowers variance and shrinks coefficients toward zero. Regularization may lead to an increase in bias, but it effectively prevents overfitting, which reduces variance.
+
+Forward Selection:
+
+By gradually adding predictors, forward selection may raise the complexity and variance of the model. Although it can help the model fit the dataset, overfitting could result in higher test MSE and more variance.
+
+Lasso Regression:
+
+By forcing some of the coefficients to zero, Lasso regression reduces the complexity of the model while performing feature selection. Although Lasso is useful for selecting features, it may exacerbate bias by excluding features that could be important, which could affect prediction accuracy.
+
+PCR Selection Considering the Bias-Variance Tradeoff:
+
+PCR with the lowest test mean square error would be the best prediction model for our dataset.
+
+Advantages of PCR:
+
+By converting predictors into uncorrelated components, PCR reduces the possibility of overfitting by addressing multicollinearity. It focuses on capturing important variance while lowering dimensionality, striking a compromise between variance reduction and bias.
+
+
