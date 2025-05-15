@@ -10,61 +10,26 @@ This project applies **machine learning, dimensionality reduction, clustering, a
 ---
 
 ## 📥 Large File Handling
-The MNIST training dataset (`train_mnist.csv`) is over 100MB and exceeds GitHub's file size limit. This file is excluded from the repository. To work with this project:
+The MNIST training dataset (`train_mnist.csv`) is over 100MB and exceeds GitHub's file size limit. This file is excluded from the repository but is available for download.
 
-### Option 1: Request the file directly
-Since this is a custom dataset for this specific project, you'll need to request the file directly from the project owner.
+### Download from Google Drive
+The `train_mnist.csv` file is available in a Google Drive folder. To access it:
 
-### Option 2: Generate a compatible dataset in R
-You can generate a compatible MNIST dataset using R:
+1. **Download Link**: [MNIST Training Dataset (Google Drive)](https://drive.google.com/drive/folders/1-2XBq3R5WLH3_hPXeDGHXKE-AJVVoYvt?usp=sharing)
+2. **After downloading**: Place the file in the `data/` directory of your local repository clone.
 
-```r
-# Install required packages if needed
-if (!require("readr")) install.packages("readr")
-if (!require("dplyr")) install.packages("dplyr")
-
-# Load libraries
-library(readr)
-library(dplyr)
-
-# Generate a placeholder MNIST dataset with the correct structure
-# Note: This creates a simplified version - actual data will differ
-generate_mnist_placeholder <- function(output_path = "data/train_mnist.csv", n_samples = 10000) {
-  # Create column names (1 for label, 784 for pixels)
-  col_names <- c("label", paste0("pixel", 0:783))
-  
-  # Generate random data (simplified)
-  set.seed(123)  # For reproducibility
-  
-  # Create a data frame with random values
-  mnist_data <- as.data.frame(matrix(
-    sample(0:255, n_samples * 784, replace = TRUE),
-    nrow = n_samples,
-    ncol = 784
-  ))
-  
-  # Add random labels (0-9)
-  mnist_data <- cbind(
-    label = sample(0:9, n_samples, replace = TRUE),
-    mnist_data
-  )
-  
-  # Set column names
-  colnames(mnist_data) <- col_names
-  
-  # Write to CSV
-  write_csv(mnist_data, output_path)
-  
-  cat("Placeholder MNIST dataset created at:", output_path, "\n")
-  cat("Note: This is a simplified version with random data.\n")
-  cat("For the actual dataset, please contact the project owner.\n")
-}
-
-# Run the function to generate the placeholder
-generate_mnist_placeholder()
+```
+Statistical-Analysis-Project/
+├── data/
+│   ├── train_mnist.csv  <- Place the downloaded file here
+│   ├── test_mnist.csv
+│   ├── reg_train.csv
+│   └── reg_test.csv
+├── notebook/
+└── ...
 ```
 
-### Option 3: Use Git LFS on a different platform
+### Alternative: Use Git LFS on a different platform
 If you need to maintain the exact dataset with version control, consider using a platform with higher file size limits, such as GitLab or Bitbucket, with Git LFS enabled.
 
 ---
