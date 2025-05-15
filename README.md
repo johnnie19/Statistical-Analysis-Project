@@ -15,7 +15,7 @@ The MNIST training dataset (`train_mnist.csv`) is over 100MB and exceeds GitHub'
 ### Download from Google Drive
 The `train_mnist.csv` file is available in a Google Drive folder. To access it:
 
-1. **Download Link**: [MNIST Training Dataset (Google Drive)]([https://drive.google.com/drive/folders/1-2XBq3R5WLH3_hPXeDGHXKE-AJVVoYvt?usp=sharing](https://drive.google.com/file/d/1YVTjXUj1yeLAifRI-oydOtNBtR-oHzTE/view?usp=drive_link])
+1. **Download Link**: [MNIST Training Dataset (Google Drive)](https://drive.google.com/file/d/1YVTjXUj1yeLAifRI-oydOtNBtR-oHzTE/view?usp=drive_link)
 2. **After downloading**: Place the file in the `data/` directory of your local repository clone.
 
 ```
